@@ -36,6 +36,8 @@ Further modifications by: Ben Cumming, CSCS; Andreas Herten (JSC/FZJ); Sebastian
 #include <getopt.h>
 
 #include <chrono>
+#include <nvml.h>
+#include <iostream>
 
 # ifndef MIN
 # define MIN(x,y) ((x)<(y)?(x):(y))
@@ -166,6 +168,14 @@ __global__ void STREAM_Triad(T const * __restrict__ a, T const * __restrict__ b,
 
 int main(int argc, char** argv)
 {
+  nvmlInit();
+
+  nvmlDevice_t device;
+  nvmlDeviceGetHandleByIndex_v2(0, &device);
+  char uuid[100];
+  nvmlDeviceGetUUID(device, uuid, 100);
+  std::cout<<"Device UUID = " << uuid<<"\n";
+
   real *d_a, *d_b, *d_c;
   int j,k;
   double times[4][NTIMES];
@@ -307,5 +317,7 @@ int main(int argc, char** argv)
   cudaFree(d_a);
   cudaFree(d_b);
   cudaFree(d_c);
+
+  nvmlShutdown();
 }
 

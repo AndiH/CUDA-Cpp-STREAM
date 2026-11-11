@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <float.h>
 #include <limits.h>
+#include <cstdlib>
 // #include <unistd.h>
 #include <getopt.h>
 #include <sys/time.h>
@@ -65,14 +66,14 @@ void print_help()
     );
 }
 
-void parse_options(int argc, char** argv, bool& SI, bool& CSV, bool& CSV_full, bool& CSV_header, int& N, int& blockSize)
+void parse_options(int argc, char** argv, bool& SI, bool& CSV, bool& CSV_full, bool& CSV_header, size_t& N, int& blockSize)
 {
     // Default values
     SI = false;
     CSV = false;
     CSV_full = false;
     CSV_header = false;
-    N = 1<<26;
+    N = (size_t)1 << 26;
     blockSize = 192;
 
     static struct option long_options[] = {
@@ -103,7 +104,7 @@ void parse_options(int argc, char** argv, bool& SI, bool& CSV, bool& CSV_full, b
                 CSV_header = true;
                 break;
             case 'n':
-                N = std::atoi(optarg);
+                N = (size_t)std::strtoull(optarg, nullptr, 10);
                 break;
             case 'b':
                 blockSize = std::atoi(optarg);
@@ -132,41 +133,41 @@ double mysecond()
 
 
 template <typename T>
-__global__ void set_array(T * __restrict__ const a, T value, int len)
+__global__ void set_array(T * __restrict__ const a, T value, size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < len)
         a[idx] = value;
 }
 
 template <typename T>
-__global__ void STREAM_Copy(T const * __restrict__ const a, T * __restrict__ const b, int len)
+__global__ void STREAM_Copy(T const * __restrict__ const a, T * __restrict__ const b, size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < len)
         b[idx] = a[idx];
 }
 
 template <typename T>
-__global__ void STREAM_Scale(T const * __restrict__ const a, T * __restrict__ const b, T scale,  int len)
+__global__ void STREAM_Scale(T const * __restrict__ const a, T * __restrict__ const b, T scale,  size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < len)
         b[idx] = scale * a[idx];
 }
 
 template <typename T>
-__global__ void STREAM_Add(T const * __restrict__ const a, T const * __restrict__ const b, T * __restrict__ const c, int len)
+__global__ void STREAM_Add(T const * __restrict__ const a, T const * __restrict__ const b, T * __restrict__ const c, size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < len)
         c[idx] = a[idx] + b[idx];
 }
 
 template <typename T>
-__global__ void STREAM_Triad(T const * __restrict__ a, T const * __restrict__ b, T * __restrict__ const c, T scalar, int len)
+__global__ void STREAM_Triad(T const * __restrict__ a, T const * __restrict__ b, T * __restrict__ const c, T scalar, size_t len)
 {
-    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < len)
         c[idx] = a[idx] + scalar * b[idx];
 }
@@ -181,7 +182,8 @@ int main(int argc, char** argv)
 
     // Parse arguments
     bool SI, CSV, CSV_full, CSV_header;
-    int N, blockSize;
+    size_t N;
+    int blockSize;
     parse_options(argc, argv, SI, CSV, CSV_full, CSV_header, N, blockSize);
 
     if (!CSV) {
@@ -196,11 +198,10 @@ int main(int argc, char** argv)
 
     /* Compute execution configuration */
     dim3 dimBlock(blockSize);
-    dim3 dimGrid(N/dimBlock.x );
-    if( N % dimBlock.x != 0 ) dimGrid.x+=1;
+    dim3 dimGrid(static_cast<unsigned int>((N + blockSize - 1) / blockSize));
 
     if (!CSV) {
-        printf("Using %d threads per block, %d blocks\n",dimBlock.x,dimGrid.x);
+        printf("Using %u threads per block, %u blocks\n",dimBlock.x,dimGrid.x);
 
         if (SI)
             printf("Output in SI units (KB = 1000 B)\n");
